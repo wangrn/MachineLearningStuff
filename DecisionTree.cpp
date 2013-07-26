@@ -21,6 +21,36 @@ double binary_entropy(long _t, long _p)
 
 int ig_split::split(int base, int attr, int cnt, float* data, int* labels, double* weights, double& max_ig, int& max_idx, float& split_value)
 {
+    int t_pos = 0;
+    int t_neg = 0;
+    long dist_t_pos = 0;
+    long dist_t_neg = 0;
+    
+    for (int i = 0; i < cnt; i ++) {
+        knot kt;
+        kt.value = data[i];
+        kt.label = (int)(labels[i]*1000*(base*weights[i]));
+        
+        if (kt.label > 0) {
+            t_pos += 1;
+            dist_t_pos += kt.label;
+        } else {
+            t_neg += 1;
+            dist_t_neg += kt.label;
+        }
+        mh->add_element(kt);
+    }
+    
+    int t_ttl = t_pos + t_neg;
+    long dist_t_ttl = dist_t_pos + dist_t_neg;
+    if (dist_t_pos == dist_t_ttl || dist_t_pos == 0)
+        return -1;
+    
+    mh->sort();
+    double __hy = binary_entropy(dist_t_tll, dist_t_pos);
+    
+    int left_pos = 0;
+    int left_neg = 0;
     //TODO
 }
 
