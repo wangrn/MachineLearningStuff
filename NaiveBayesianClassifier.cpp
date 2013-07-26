@@ -26,6 +26,16 @@
  *
  */
 
+
+#include <stdio.h>
+#include <stdlib.h>
+
+//改进的朴素贝叶斯, 模型公式参见文件开头注释.
+class NaiveBayesianClassifier
+{
+    ///TODO
+};
+
 int main() 
 {
     printf ("Hello world!\n");
