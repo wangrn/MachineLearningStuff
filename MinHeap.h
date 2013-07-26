@@ -1,6 +1,7 @@
 #ifndef MIN_HEAP_H
 #define MIN_HEAP_H
 
+namespace mlf {
 namespace utils {
 
 template <typename T>
@@ -139,4 +140,5 @@ private:
 
 };
 
+};
 #endif
