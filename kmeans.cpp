@@ -10,7 +10,7 @@ using namespace std;
 const int CLUSTER_NUM = 3;      //< 聚类的数量
 const int MAX_ITER_NUM = 30;    //< 最大迭代次数
 
-typdef vector<double> Tuple;    //< 存储每个样例的属性信息
+typedef vector<double> Tuple;    //< 存储每个样例的属性信息
 
 int SampleNumber;       //< 数据集中的样例数目
 int DimensionsNumber;   //< 每个样例的维数
@@ -44,7 +44,7 @@ int clusterOfTuple(Tuple means[], const Tuple &tuple)
 }
 
 // 获得给定cluster的平方误差
-doube getVar(vector<Tuple> clusters[], Tuple means[]) 
+double getVar(vector<Tuple> clusters[], Tuple means[]) 
 {
     double var = 0;
     for (int i = 0; i < CLUSTER_NUM; i ++)
