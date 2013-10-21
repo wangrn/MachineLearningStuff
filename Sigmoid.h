@@ -9,7 +9,10 @@ using namespace std;
 #define MAX_EXP 6
 
 /**
- *
+ * 取x在(-MAX_EXP, MAX_EXP)之间，小于等于-MAX_EXP的取0值，大于等于MAX_EXP的取1值.
+ * (-MAX_EXP, MAX_EXP)之间的偏移扩大到[0,EXP_TABLE_SIZE]的整数，进行打表.
+ * 
+ * 参见google的word2vec.
  */
 class Sigmoid
 {
