@@ -5,11 +5,9 @@
  * 改进的朴素贝叶斯算法, 结合词在类别中的权重, 进行适当的调权.
  * 
  * 
- * Pr(c|d) 是文档d属于类c的概率. 假定文档内词是独立的, 则Pr(c|d) = Σ Pr(c|w)*Pr(w|d) .
+ * Pr(c|d) 是文档d属于类c的概率. 假定文档内词是独立的, 则Pr(c|d) = Pr(c) * Σ Pr(w|c)*Pr(w|d) .
  *      Pr(w|d)是词w在文档d中的词频, 可以是各种归一化或平滑公式.
- * 
- * Pr(c|w) = Pr(w|c) * Pr(c)
- *      Pr(c) 先验概率, 类c的样本数, 可以从训练集中统计出. 
+ *      Pr(w|d)=1.0
  * 
  * Pr(w|c) = Pow( N(w|c)/N(w), 1.5) * factor
  *      N(w|c)是词w在类c中的词频, N(w)是词w在所有训练集中的词频.
@@ -33,20 +31,21 @@
 #include <math.h>
 #include <iostream>
 #include <map>
-
+#include <vector>
+#include <errno.h>
 using namespace std;
 
 
 //改进的朴素贝叶斯, 模型公式参见文件开头注释.
-class NaiveBayesianClassifier
+class NaiveBayesianTrainer
 {
 public:
-    NaiveBayesianClassifier()
+    NaiveBayesianTrainer()
     {
         alpha = 0.2;
-        min_count_in_class = 50.0;
-        threshold = 0.1;
-        min_count = 3;
+        min_count_in_class = 0.0;
+        threshold = 0.0;
+        min_count = 0;
     }
     
     void train(FILE *input, FILE *output)
@@ -61,7 +60,8 @@ public:
             int i = 0;
             label = strtok(line, "\t");
             if (label == NULL) continue;
-            
+            strtok(NULL, "\t"); //doc id
+
             Cj[label] ++;
             while (true)
             {
@@ -82,8 +82,19 @@ public:
                 i++;
             }
             total ++;
+            fprintf(stderr, "doc = %d\n", total);
         }
-         
+        fprintf(stderr, "DFi=%d DFij=%d mClassWordDF=%d\n", DFi.size(), DFij.size(), mClassWordDF.size()); 
+		for (map<string, uint32_t>::iterator it = DFi.begin(); it!=DFi.end(); it ++)
+		{
+			it->second += mClassWordDF.size();
+			for (map<string, map<string, uint32_t> >::iterator it2 = mClassWordDF.begin();
+					it2 != mClassWordDF.end(); it2 ++)
+			{
+				mClassWordDF[it2->first][it->first] ++;
+				DFij[it->first][it2->first] ++;
+			}
+		}
         for (map<string, map<string, uint32_t> >::iterator it = mClassWordDF.begin();
                           it != mClassWordDF.end(); it ++)
         {
@@ -98,7 +109,7 @@ public:
                     pr += it1->second;
                 }
             }
-            if (k > 0) mClassAvgDF[it->first] = pr / k;
+            if (k > 0) mClassAvgDF[it->first] = pr / k; // avg DF in class
         }
         
         float weight, factor;
@@ -115,7 +126,17 @@ public:
                     
                     weight = factor * pow(1.0*it2->second/it1->second, 1.5);
                     if (weight >= threshold) {
-                        fprintf(output,"%s\t%s\t%f\t%d\t%d\t%d\t%f\t%f\n",it2->first.c_str(),it1->first.c_str(),weight,Cj[it2->first],it1->second,it2->second,1.0*it2->second/it1->second,factor);
+						//classid word weight N(classid) N_DOC_NUM N(word) N(classid,word) N(classid,word)/N(word) factor
+                        fprintf(output,"%s\t%s\t%f\t%d\t%d\t%d\t%d\t%f\t%f\n",
+								it2->first.c_str(), // classid
+								it1->first.c_str(), // word
+								weight,             // Pr(classid | word)
+								Cj[it2->first],     // N(classid), the number of clsid in corpus
+								total,              // N , the doc number of corpus
+								it1->second,        // N(word), DF(word) in corpus
+								it2->second,        // N(classid, word)  DF(word) in classid
+								1.0*it2->second/it1->second, // N(classid,word)/N(word) === P(classid|word)
+								factor);            // factor
                     }
                 }
             }
@@ -133,15 +154,144 @@ private:
     map<string, float>    mClassAvgDF; // 类Cj的平均词频 
 };
 
-
-
-int main() 
+class NaiveBayesianPredictor
 {
-    freopen("input.txt", "r", stdin);
-    freopen("output.txt", "w", stdout);
-    
-    NaiveBayesianClassifier nbc;
-    nbc.train(stdin, stdout);
+public:
+    struct node
+    {
+		float weight;
+		int nCls;
+		int nTotalDoc;
+		int nWord;
+		int nClsWord;
+		float pr; // nClsWord / nWord
+		float factor;
+    };
+	NaiveBayesianPredictor()
+	{
+		docs = 0;
+	}
+
+	bool load(string file)
+	{
+		char line[4096];
+		char *word, *cls, *tmp;
+		struct node n;
+		FILE *fp = fopen(file.c_str(), "r");
+		while (fgets(line, sizeof(line), fp))
+		{
+			//classid word weight N(classid) N(word) N(classid|word) N(classid|word)/N(word) factor
+			cls = strtok(line, "\t");
+			word  = strtok(NULL, "\t");
+            tmp = strtok(NULL, "\t"); n.weight = atof(tmp);
+			tmp = strtok(NULL, "\t"); n.nCls = atoi(tmp);
+			tmp = strtok(NULL, "\t"); n.nTotalDoc = atoi(tmp);
+			tmp = strtok(NULL, "\t"); n.nWord = atoi(tmp);
+			tmp = strtok(NULL, "\t"); n.nClsWord = atoi(tmp);
+			tmp = strtok(NULL, "\t"); n.pr = atof(tmp);
+			tmp = strtok(NULL, "\t"); n.factor = atof(tmp);
+            model[word][cls] = n;
+			prC[cls] = n.nCls*1.0/n.nTotalDoc;
+		}
+		fclose(fp);
+		defaultCls="UNKOWN";
+		float max_prob = -10000000.0;
+		for(map<string, float>::iterator it = prC.begin(); it!=prC.end(); it ++)
+		{
+			if (it->second > max_prob)
+			{
+				max_prob = it->second;
+				defaultCls = it->first;
+			}
+		}
+		fprintf(stderr, "load ok. pr=%d model=%d\n", prC.size(), model.size());
+	}
+
+	string predict(vector<string> &terms)
+	{
+#define Optimization 1
+        map<string, double> result;
+		for (int i = 0; i < terms.size(); i ++)
+		{
+			string word = terms[i];
+			if (model.find(word) == model.end()) continue;
+			map<string, node> data = model[word];
+			
+			for(map<string,node>::iterator it= data.begin(); it!=data.end(); it++)
+			{
+				if(result.find(it->first) == result.end()) result[it->first] = 1.0f;
+				result[it->first] += log(it->second.pr);
+				//result[it->first] += log(it->second.weight);
+			}
+		}
+
+		string label = defaultCls;
+		double  max_prob = -1000000.0;
+		for(map<string,double>::iterator it= result.begin(); it!=result.end(); it++)
+		{
+			double prob = it->second + log(prC[it->first]);
+			if (prob > max_prob)
+			{
+				label = it->first;
+				max_prob = prob;
+			}
+		}
+#undef Optimization
+		fprintf(stderr, "result=%s %lf\n", label.c_str(), max_prob);
+
+		return label;
+	}
+private:
+	int docs;
+    map<string, map<string, node> > model;
+	map<string, float> prC;
+	string defaultCls;
+};
+
+int main(int argc, char*argv[]) 
+{
+    if (argc != 2)
+	{
+		fprintf(stderr, "%s train|predict\n", argv[0]);
+		return -1;
+	}	
+	if (strcmp(argv[1], "train") == 0)
+	{
+		NaiveBayesianTrainer nbc;
+		nbc.train(stdin, stdout);
+	}
+	else
+	{
+		NaiveBayesianPredictor predictor;
+		predictor.load("nbc.model");
+		char line[4096];
+		char *label, *idx, *val, *tmp, *endptr;
+		double value;
+		while (fgets(line, sizeof(line), stdin))
+		{
+			int i = 0;
+			label = strtok(line, "\t");
+			if (label == NULL) continue;
+			tmp = strtok(NULL, "\t");
+
+			vector<string> terms;
+			while (true)
+			{
+				idx = strtok(NULL, ":");
+				if (idx == NULL) break;
+				val = strtok(NULL, "\t");
+				if (val == NULL) break;
+				//errno = 0;
+				//value = strtod(val, &endptr);
+				//if (endptr == val || errno != 0 || (*endptr != '\0' && !isspace(*endptr)))
+				//	continue;
+				
+				terms.push_back(idx);
+			}
+			string output = predictor.predict(terms);
+			fprintf(stdout, "%s\t%s\n", label, output.c_str());
+		}
+	}
     return 0;
 }
 
