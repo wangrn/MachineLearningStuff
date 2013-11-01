@@ -31,6 +31,7 @@
 #include <math.h>
 #include <iostream>
 #include <map>
+#include <set>
 #include <vector>
 #include <errno.h>
 using namespace std;
@@ -85,23 +86,23 @@ public:
             fprintf(stderr, "doc = %d\n", total);
         }
         fprintf(stderr, "DFi=%d DFij=%d mClassWordDF=%d\n", DFi.size(), DFij.size(), mClassWordDF.size()); 
-		for (map<string, uint32_t>::iterator it = DFi.begin(); it!=DFi.end(); it ++)
-		{
-			it->second += mClassWordDF.size();
-			for (map<string, map<string, uint32_t> >::iterator it2 = mClassWordDF.begin();
-					it2 != mClassWordDF.end(); it2 ++)
-			{
-				mClassWordDF[it2->first][it->first] ++;
-				DFij[it->first][it2->first] ++;
-			}
-		}
+        for (map<string, uint32_t>::iterator it = DFi.begin(); it!=DFi.end(); it ++)
+        {
+            it->second += mClassWordDF.size();
+            for (map<string, map<string, uint32_t> >::iterator it2 = mClassWordDF.begin();
+                    it2 != mClassWordDF.end(); it2 ++)
+            {
+                mClassWordDF[it2->first][it->first] ++;
+                DFij[it->first][it2->first] ++;
+            }
+        }
         for (map<string, map<string, uint32_t> >::iterator it = mClassWordDF.begin();
-                          it != mClassWordDF.end(); it ++)
+                it != mClassWordDF.end(); it ++)
         {
             float pr = 0.0;
             int k = 0;
             for (map<string, uint32_t>::iterator it1 = it->second.begin();
-                              it1 != it->second.end(); it1 ++)
+                    it1 != it->second.end(); it1 ++)
             {
                 if (it1->second > min_count_in_class)
                 {
@@ -111,7 +112,7 @@ public:
             }
             if (k > 0) mClassAvgDF[it->first] = pr / k; // avg DF in class
         }
-        
+    
         float weight, factor;
         for (map<string,uint32_t>::iterator it1=DFi.begin();it1!=DFi.end();it1++)
         {
@@ -128,15 +129,15 @@ public:
                     if (weight >= threshold) {
 						//classid word weight N(classid) N_DOC_NUM N(word) N(classid,word) N(classid,word)/N(word) factor
                         fprintf(output,"%s\t%s\t%f\t%d\t%d\t%d\t%d\t%f\t%f\n",
-								it2->first.c_str(), // classid
-								it1->first.c_str(), // word
-								weight,             // Pr(classid | word)
-								Cj[it2->first],     // N(classid), the number of clsid in corpus
-								total,              // N , the doc number of corpus
-								it1->second,        // N(word), DF(word) in corpus
-								it2->second,        // N(classid, word)  DF(word) in classid
-								1.0*it2->second/it1->second, // N(classid,word)/N(word) === P(classid|word)
-								factor);            // factor
+                                it2->first.c_str(), // classid
+                                it1->first.c_str(), // word
+                                weight,             // Pr(classid | word)
+                                Cj[it2->first],     // N(classid), the number of clsid in corpus
+                                total,              // N , the doc number of corpus
+                                it1->second,        // N(word), DF(word) in corpus
+                                it2->second,        // N(classid, word)  DF(word) in classid
+                                1.0*it2->second/it1->second, // N(classid,word)/N(word) === P(classid|word)
+                                factor);            // factor
                     }
                 }
             }
@@ -159,139 +160,146 @@ class NaiveBayesianPredictor
 public:
     struct node
     {
-		float weight;
-		int nCls;
-		int nTotalDoc;
-		int nWord;
-		int nClsWord;
-		float pr; // nClsWord / nWord
-		float factor;
+        float weight;
+        int nCls;
+        int nTotalDoc;
+        int nWord;
+        int nClsWord;
+        float pr; // nClsWord / nWord
+        float factor;
     };
-	NaiveBayesianPredictor()
-	{
-		docs = 0;
-	}
+    NaiveBayesianPredictor()
+    {
+        FILE *fp = fopen("stopword.txt", "r");
+        char line[4096];
+        while (fgets(line, sizeof(line), fp))
+        {
+            line[strlen(line)] = '\0';
+            stopword.insert(line);
+        }
+        fprintf(stderr, "Load %d stopwords\n", stopword.size());
+        fclose(fp);
+    }
 
-	bool load(string file)
-	{
-		char line[4096];
-		char *word, *cls, *tmp;
-		struct node n;
-		FILE *fp = fopen(file.c_str(), "r");
-		while (fgets(line, sizeof(line), fp))
-		{
-			//classid word weight N(classid) N(word) N(classid|word) N(classid|word)/N(word) factor
-			cls = strtok(line, "\t");
-			word  = strtok(NULL, "\t");
+    bool load(string file)
+    {
+        char line[4096];
+        char *word, *cls, *tmp;
+        struct node n;
+        FILE *fp = fopen(file.c_str(), "r");
+        while (fgets(line, sizeof(line), fp))
+        {
+            //classid word weight N(classid) N(word) N(classid|word) N(classid|word)/N(word) factor
+            cls = strtok(line, "\t");
+            word  = strtok(NULL, "\t");
+            if (stopword.find(word) != stopword.end()) continue;
             tmp = strtok(NULL, "\t"); n.weight = atof(tmp);
-			tmp = strtok(NULL, "\t"); n.nCls = atoi(tmp);
-			tmp = strtok(NULL, "\t"); n.nTotalDoc = atoi(tmp);
-			tmp = strtok(NULL, "\t"); n.nWord = atoi(tmp);
-			tmp = strtok(NULL, "\t"); n.nClsWord = atoi(tmp);
-			tmp = strtok(NULL, "\t"); n.pr = atof(tmp);
-			tmp = strtok(NULL, "\t"); n.factor = atof(tmp);
+            tmp = strtok(NULL, "\t"); n.nCls = atoi(tmp);
+            tmp = strtok(NULL, "\t"); n.nTotalDoc = atoi(tmp);
+            tmp = strtok(NULL, "\t"); n.nWord = atoi(tmp);
+            tmp = strtok(NULL, "\t"); n.nClsWord = atoi(tmp);
+            tmp = strtok(NULL, "\t"); n.pr = atof(tmp);
+            tmp = strtok(NULL, "\t"); n.factor = atof(tmp);
             model[word][cls] = n;
-			prC[cls] = n.nCls*1.0/n.nTotalDoc;
-		}
-		fclose(fp);
-		defaultCls="UNKOWN";
-		float max_prob = -10000000.0;
-		for(map<string, float>::iterator it = prC.begin(); it!=prC.end(); it ++)
-		{
-			if (it->second > max_prob)
-			{
-				max_prob = it->second;
-				defaultCls = it->first;
-			}
-		}
-		fprintf(stderr, "load ok. pr=%d model=%d\n", prC.size(), model.size());
-	}
+            prC[cls] = n.nCls*1.0/n.nTotalDoc;
+        }
+        fclose(fp);
+        defaultCls="UNKOWN";
+        float max_prob = -10000000.0;
+        for(map<string, float>::iterator it = prC.begin(); it!=prC.end(); it ++)
+        {
+            if (it->second > max_prob)
+            {
+                max_prob = it->second;
+                defaultCls = it->first;
+            }
+        }
+        fprintf(stderr, "load ok. pr=%d model=%d\n", prC.size(), model.size());
+    }
 
-	string predict(vector<string> &terms)
-	{
+    string predict(vector<string> &terms)
+    {
 #define Optimization 1
         map<string, double> result;
-		for (int i = 0; i < terms.size(); i ++)
-		{
-			string word = terms[i];
-			if (model.find(word) == model.end()) continue;
-			map<string, node> data = model[word];
-			
-			for(map<string,node>::iterator it= data.begin(); it!=data.end(); it++)
-			{
-				if(result.find(it->first) == result.end()) result[it->first] = 1.0f;
-				result[it->first] += log(it->second.pr);
-				//result[it->first] += log(it->second.weight);
-			}
-		}
+        for (int i = 0; i < terms.size(); i ++)
+        {
+            string word = terms[i];
+            if (model.find(word) == model.end()) continue;
+            map<string, node> data = model[word];
 
-		string label = defaultCls;
-		double  max_prob = -1000000.0;
-		for(map<string,double>::iterator it= result.begin(); it!=result.end(); it++)
-		{
-			double prob = it->second + log(prC[it->first]);
-			if (prob > max_prob)
-			{
-				label = it->first;
-				max_prob = prob;
-			}
-		}
+            for(map<string,node>::iterator it= data.begin(); it!=data.end(); it++)
+            {
+                if(result.find(it->first) == result.end()) result[it->first] = 1.0f;
+                result[it->first] += log(it->second.pr);
+                //result[it->first] += log(it->second.weight);
+            }
+        }
+
+        string label = defaultCls;
+        double  max_prob = -1000000.0;
+        for(map<string,double>::iterator it= result.begin(); it!=result.end(); it++)
+        {
+            double prob = it->second + log(prC[it->first]);
+            if (prob > max_prob)
+            {
+                label = it->first;
+                max_prob = prob;
+            }
+        }
 #undef Optimization
-		fprintf(stderr, "result=%s %lf\n", label.c_str(), max_prob);
-
-		return label;
-	}
+        fprintf(stderr, "result=%s %lf\n", label.c_str(), max_prob);
+        return label;
+    }
 private:
-	int docs;
     map<string, map<string, node> > model;
-	map<string, float> prC;
-	string defaultCls;
+    map<string, float> prC;
+    string defaultCls;
+    set<string> stopword;
 };
 
 int main(int argc, char*argv[]) 
 {
     if (argc != 2)
-	{
-		fprintf(stderr, "%s train|predict\n", argv[0]);
-		return -1;
-	}	
-	if (strcmp(argv[1], "train") == 0)
-	{
-		NaiveBayesianTrainer nbc;
-		nbc.train(stdin, stdout);
-	}
-	else
-	{
-		NaiveBayesianPredictor predictor;
-		predictor.load("nbc.model");
-		char line[4096];
-		char *label, *idx, *val, *tmp, *endptr;
-		double value;
-		while (fgets(line, sizeof(line), stdin))
-		{
-			int i = 0;
-			label = strtok(line, "\t");
-			if (label == NULL) continue;
-			tmp = strtok(NULL, "\t");
+    {
+        fprintf(stderr, "%s train|predict\n", argv[0]);
+        return -1;
+    }	
+    if (strcmp(argv[1], "train") == 0)
+    {
+        NaiveBayesianTrainer nbc;
+        nbc.train(stdin, stdout);
+    }
+    else
+    {
+        NaiveBayesianPredictor predictor;
+        predictor.load("nbc.model");
+        char line[4096];
+        char *label, *idx, *val, *tmp, *endptr;
+        double value;
+        while (fgets(line, sizeof(line), stdin))
+        {
+            int i = 0;
+            label = strtok(line, "\t");
+            if (label == NULL) continue;
+            tmp = strtok(NULL, "\t");
 
-			vector<string> terms;
-			while (true)
-			{
-				idx = strtok(NULL, ":");
-				if (idx == NULL) break;
-				val = strtok(NULL, "\t");
-				if (val == NULL) break;
-				//errno = 0;
-				//value = strtod(val, &endptr);
-				//if (endptr == val || errno != 0 || (*endptr != '\0' && !isspace(*endptr)))
-				//	continue;
-				
-				terms.push_back(idx);
-			}
-			string output = predictor.predict(terms);
-			fprintf(stdout, "%s\t%s\n", label, output.c_str());
-		}
-	}
+            vector<string> terms;
+            while (true)
+            {
+                idx = strtok(NULL, ":");
+                if (idx == NULL) break;
+                val = strtok(NULL, "\t");
+                if (val == NULL) break;
+                //errno = 0;
+                //value = strtod(val, &endptr);
+                //if (endptr == val || errno != 0 || (*endptr != '\0' && !isspace(*endptr)))
+                //continue;
+                terms.push_back(idx);
+            }
+            string output = predictor.predict(terms);
+            fprintf(stdout, "%s\t%s\n", label, output.c_str());
+        }
+    }
     return 0;
 }
 
