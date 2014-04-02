@@ -46,7 +46,7 @@ public:
         alpha = 0.2;
         min_count_in_class = 0.0;
         threshold = 0.0;
-        min_count = 0;
+        min_count = 10;
     }
     
     void train(FILE *input, FILE *output)
@@ -64,6 +64,8 @@ public:
             strtok(NULL, "\t"); //doc id
 
             Cj[label] ++;
+            int term_weight = 1;
+            bool first = true;
             while (true)
             {
                 idx = strtok(NULL, ":");
@@ -75,11 +77,14 @@ public:
                 value = strtod(val, &endptr);
                 if (endptr == val || errno != 0 || (*endptr != '\0' && !isspace(*endptr)))
                     continue;
+                if (first) {if(idx[0]!='0') term_weight=10;}
+                else {if(idx[0]=='u') term_weight=5;}
+                first = false;
                 
-                DFi[idx] ++;
-                DFij[idx][label] ++;
-                mClassWordDF[label][idx] ++;
-                
+                DFi[idx] += term_weight;
+                DFij[idx][label] += term_weight;
+                mClassWordDF[label][idx] += term_weight;
+                term_weight = 1;
                 i++;
             }
             total ++;
@@ -230,8 +235,11 @@ public:
             for(map<string,node>::iterator it= data.begin(); it!=data.end(); it++)
             {
                 if(result.find(it->first) == result.end()) result[it->first] = 1.0f;
-                result[it->first] += log(it->second.pr);
-                //result[it->first] += log(it->second.weight);
+                //if(i == 0) result[it->first] += log(it->second.pr)*10;
+                //else result[it->first] += log(it->second.pr);
+                if(i == 0) result[it->first] += log(it->second.weight)*10;
+                else if(word.c_str()[0] == 'u') result[it->first] += log(it->second.weight)*5;
+                else result[it->first] += log(it->second.weight);
             }
         }
 
@@ -282,7 +290,7 @@ int main(int argc, char*argv[])
             label = strtok(line, "\t");
             if (label == NULL) continue;
             tmp = strtok(NULL, "\t");
-
+            string docid = tmp;
             vector<string> terms;
             while (true)
             {
@@ -297,7 +305,7 @@ int main(int argc, char*argv[])
                 terms.push_back(idx);
             }
             string output = predictor.predict(terms);
-            fprintf(stdout, "%s\t%s\n", label, output.c_str());
+            fprintf(stdout, "%s\t%s\t%s\n", label, output.c_str(), docid.c_str());
         }
     }
     return 0;
